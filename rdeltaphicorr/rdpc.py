@@ -18,7 +18,8 @@ except ImportError:
 
 
 class RDeltaPhiCorrelator:
-    '''
+    ''' An angular correlator.
+
         This routine takes images and correlates them in angle, delta phi.  It
         takes a set of images and converts them to rphi maps (according to
         binning).  Finally, each of these qphi maps it converts to an angular
@@ -26,6 +27,8 @@ class RDeltaPhiCorrelator:
 
         This does it in two steps:
             1. Compute the average image from the imgs
+            2. Run the average image subtracted angular correlation of each
+            frame.
 
         You need to specify:
             - imgs : a sequence of images, needs to be an iterable, which
@@ -45,49 +48,71 @@ class RDeltaPhiCorrelator:
         It is recommended to use some background subtraction method for the
         correlations to reduce error.
     '''
-    def __init__(self, shape,  origin=None, mask=None, maskb=None, rbins=800,
+    # TODO : Allow for a second set of mask for the second image in the
+    # correlation maybe? (may not b eimportant)
+    def __init__(self, shape,  origin=None, mask=None, rbins=800,
                  phibins=360, method='bgsub', saverphis=None, PF=True,
                  sigma=None):
         ''' The initialization routine for the delta phi correlation object
-        You need to specify:
-            -shape : the shape of the images
+
+            Parameters
+            ----------
+            shape : 2 tuple
+                the shape of the images
                 for ex: imgs[0].shape finds the shape
                     len(imgs) gives number of images
-            - rbins : 1 number is the number of rs
-            - phibins : 1 number is the number of phis
-            - origin : the center (can be float), defaults to image center
-                note : this is not recommended as there are a few ways
-                    to define an image center
-            - sigma : the sigma for the smoothing kernel over the images
 
-        Computes a running average but the following can save data (for
-        debugging):
-            -saverphis : save the rqphi map per image
+            origin : 2 tuple, optional
+                the center (can be float), defaults to image center
 
-            other options:
-                - bgsub: perform background subtraction background
-                  subtraction works by averaging the images together to
-                    estimate a background.
-                - PF : Print flag (prints status of run)
+            mask : 2d np.ndarray, optional
+                The mask for the images
 
-            - method (default should be good): Change the averaging method
-                    methods
-                    This could be one string or an array of strings.  It is
-                    advised only to use one method (so just one string).  If
-                    you use more, it is assumed user knows what they're doing.
-                    The first method is robust (given a finite number of
-                    images), the rest are experimental. When packaging, other
-                    methods should probably not be given (until shown they
-                    work).
-                - bgsub : this performs background subtraction prior to
-                    correlation, using as background the average image
-                - symavg : uses symmetric averaging
-                - bgest : (background estimation) estimates the background per
-                    image and subtracts
+            method : str, optional
+                The averaging method. There are currently 3:
+                    'bgsub' : subtract the average image of the image series in
+                    the correlation
+                    'bgest' : estimate the average by averaging each ring of r
+                    'symavg' : perform a symmetric averaging
+                    None : no averaging
 
+                These may be combined in a list. ex: ['bgsub', 'symavg']
 
-            Notes : initial statistic should be 'mean' so internal variables
-                necessary for the mean are computed (as opposed to 'sum')
+                Note : When using a mask, it is highly recommended to use one
+                of the averaging methods to suppress errors.
+
+            rbins : int or list of floats, optional
+                This specifies the bins in radius (in units of pixels)
+                There are two cases:
+                    - If it is an int, the image will be partitioned into that number
+                    of bins
+                    - If it is a list of floats, the floats will be treated as
+                    the edges of the bins used for the partitioning (in pixels)
+                Defaults to 800
+
+            phibins : int or list of floats, optional
+                There are two cases:
+                    - If it is an int, the image will be partitioned into that number
+                    of bins
+                    - If it is a list of floats, the floats will be treated as
+                    the edges of the bins used for the partitioning (in pixels)
+                Defaults to 360
+
+            PF : bool, optional
+                Print Flag. If True, prints verbose status of the computations.
+
+            sigma : float, optional
+                the sigma for the smoothing kernel over the images
+                Defaults to None (no smoothing)
+
+            saverphis : bool, optional
+                Decide whether to save the rqphi map per image
+                If True, after running correlations, an array of rphis is
+                saved, as obj.rphis where obj is the reference to this object.
+
+            Returns
+            -------
+            An RDeltaPhiCorrelator instance.
         '''
         # TODO : add different methods
         self.PF = PF
@@ -116,6 +141,7 @@ class RDeltaPhiCorrelator:
             self.maskb = self.mask
 
         # the statistics binner
+        # TODO : here we'd need two rphibinstats for two masks
         self.rphibinstat = RPhiBinnedStatistic(self.shape, (rbins, phibins),
                                                origin=origin, statistic='mean',
                                                mask=mask)
@@ -330,9 +356,11 @@ class RDeltaPhiCorrelator:
 
     def __call__(self, imgs, imgsb=None):
         ''' Runs the correlations.
+
             Parameters
             ----------
             imgs : one image or a sequence of images, needs to be an iterable,
+
             imgsb : optional, a second set of images to correlate with
             which returns a numpy array
                 imgs[0].ndim should give the number of dimensions of an image
@@ -346,8 +374,9 @@ class RDeltaPhiCorrelator:
             require average image before hand.
         '''
         # saving rphis is necessary if the method is bgest
-        if 'bgest' in self.method:
-            self.saverphis = True
+        if 'bgest' in self.method and self.saverphis is False:
+            raise ValueError("Error, rphis not set to True. Can't use "+\
+                             "method bgest")
 
         # convention:
         # b (ex: imgsb) means the second image batch to compare to
@@ -370,12 +399,14 @@ class RDeltaPhiCorrelator:
             self.imgsb = imgsb
 
         # compute average image
+        print("Computing a running average")
         self.avgimg, self.avgimg2, \
             self.ivsn = _runningaverage(imgs, PF=self.PF, mask=self.mask,
                                         sigma=self.sigma)
         if compute_imgb:
+            print("Computing a running average of the second set of images")
             self.avgimgb, self.avgimg2b, \
-                self.ivsnb = _runningaverage(imgs, PF=self.PF, mask=self.mask,
+                self.ivsnb = _runningaverage(imgs, PF=self.PF, mask=self.maskb,
                                              sigma=self.sigma)
         else:
             self.avgimgb = self.avgimg
@@ -474,18 +505,6 @@ class RDeltaPhiCorrelator:
                     self.rphisb[i] = rphib
                     self.rphis2b[i] = rphi2b
 
-            # before correlating, also estimate bg and subtract if option set
-            # if 'bgest' in self.method:
-                # self.rphis = self.estbgsub(self.rphis,self.rphimask)
-                # self.rphis2 = self.estbgsub(self.rphis2,self.rphimask)
-                # if imgsb is None:
-                    # self.rphisb = rphi
-                    # self.rphis2b = rphi
-                # else:
-                    # self.rphisb = self.estbgsub(self.rphisb,self.rphimask)
-                    # self.rphis2b = self.estbgsub(self.rphis2b,self.rphimask)
-
-            # this is the delta phi convolution piece
 
             rdeltaphi = self.deltaphicorrelate(rphi, rphib=rphib,
                                                rphimask=self.rphimask,
@@ -498,28 +517,7 @@ class RDeltaPhiCorrelator:
                                                 rphimaskb=self.rphimaskb,
                                                 method=self.method, wsel1=None,
                                                 wsel2=None)
-            # variance of correlation
-            # rdeltaphivar = rdeltaphi**2
-            # rdeltaphivar = self.deltaphicorrelate(rphi**2,
-            #                           rphimask=self.rphimask,
-            #                           rphib=rphib**2,
-            #                           rphimaskb=self.rphimaskb,
-            #                           method=self.method,
-            #                           wsel1=None, wsel2=None)
-            # variance of 2nd order correlation
-            # rdeltaphivar2 = rdeltaphi2**2
-            # rdeltaphivar2 = self.deltaphicorrelate(rphi**4,
-            #                           rphimask=self.rphimask,
-            #                           rphib=rphib**4,
-            #                           rphimaskb=self.rphimaskb,
-            #                           method=self.method,
-            #                           wsel1=None, wsel2=None)
 
-            # self.rdeltaphiavg[self.wsel2] += rdeltaphi[self.wsel2]
-            # self.rdeltaphiavg2[self.wsel2] += rdeltaphi2[self.wsel2]
-            # self.rdeltaphivar[self.wsel2] += rdeltaphivar[self.wsel2]
-            # self.rdeltaphivar2[self.wsel2] += rdeltaphivar2[self.wsel2]
-            # accumulate the average
             self.rdphivaravg_state =\
                 _running_var_avg(rdeltaphi[self.wsel2][np.newaxis, :],
                                  prev=self.rdphivaravg_state, mask=None)
@@ -541,17 +539,6 @@ class RDeltaPhiCorrelator:
         # the variance of the mean itself is reduced by another factor of
         # sqrt(nimgs)
         self.rdeltaphivar2 /= np.sqrt(n)
-
-        # self.rdeltaphivar -= self.rdeltaphiavg**2
-        # self.rdeltaphivar2 -= self.rdeltaphiavg2**2
-        # if only one image, don't use estimated variance
-        # self.rdeltaphivar /= np.maximum(self.nimgs-1, 1)
-        # self.rdeltaphivar2 /= np.maximum(self.nimgs-1, 1)
-        # self.rdeltaphivar = np.sqrt(self.rdeltaphivar)
-        # self.rdeltaphivar2 = np.sqrt(self.rdeltaphivar2)
-
-        # self.rdeltaphiavg /= self.nimgs
-        # self.rdeltaphiavg2 /= self.nimgs
 
         # compute the normalized version (for better viewing)
         self.rdeltaphiavg_n = \
@@ -674,8 +661,6 @@ def _runningaverage(imgs, PF=True, sigma=None, mask=None):
     avgimg2 = np.zeros(imgs[0].shape)
 
     ivsn = np.zeros(len(imgs))
-
-    print("Performing a running average")
 
     if tqdm_loaded and PF:
         rangeiter = tqdm(range(len(rng)))
