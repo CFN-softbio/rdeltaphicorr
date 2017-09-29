@@ -1,7 +1,10 @@
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
+from skbeam.core.accumulators.binned_statistic import BinnedStatistic1D,\
+    BinnedStatistic2D
 from skbeam.core.accumulators.binned_statistic import RPhiBinnedStatistic,\
-        RadialBinnedStatistic
+    RadialBinnedStatistic
+from skbeam.core.utils import angle_grid, radial_grid
 
 # this function just makes a nice status bar, not necessary
 try:
@@ -14,7 +17,55 @@ except ImportError:
 ''' This code relates all angular correlation related code.
 '''
 
-# TODO : make a 1D version (version that allows 1D correlations)
+
+# TODO : moake a 1D version (version that allows 1D correlations)
+def mkrbinstat(shape, origin, r_map=None, mask=None, statistic='mean',
+               bins=800):
+    ''' Make the radial binned statistic. Allow for
+        an rmap to be supplied
+    '''
+    if origin is None:
+        origin = (shape[0] - 1) / 2, (shape[1] - 1) / 2
+
+    if r_map is None:
+        r_map = radial_grid(origin, shape)
+
+    if mask is not None:
+        if mask.shape != shape:
+            raise ValueError('"mask" has incorrect shape. '
+                             ' Expected: ' + str(shape) +
+                             ' Received: ' + str(mask.shape))
+        mask = mask.reshape(-1)
+
+    rbinstat = BinnedStatistic1D(r_map.reshape(-1), statistic, bins=bins,
+                                 mask=mask,
+                                 )
+    return rbinstat
+
+
+def mkrphibinstat(shape, origin, r_map=None, mask=None, statistic='mean',
+                  bins=(800, 300)):
+    ''' Make the radial phi binned statistic. Allow for an rmap to be supplied
+    '''
+    if origin is None:
+        origin = (shape[0] - 1) / 2., (shape[1] - 1) / 2.
+
+    if r_map is None:
+        r_map = radial_grid(origin, shape)
+
+    phi_map = angle_grid(origin, shape)
+
+    shape = tuple(shape)
+    if mask is not None:
+        if mask.shape != shape:
+            raise ValueError('"mask" has incorrect shape. '
+                             ' Expected: ' + str(shape) +
+                             ' Received: ' + str(mask.shape))
+        mask = mask.reshape(-1)
+
+    rphibinstat = BinnedStatistic2D(r_map.reshape(-1), phi_map.reshape(-1),
+                                    statistic, bins=bins, mask=mask)
+    return rphibinstat
 
 
 class RDeltaPhiCorrelator:
@@ -50,9 +101,9 @@ class RDeltaPhiCorrelator:
     '''
     # TODO : Allow for a second set of mask for the second image in the
     # correlation maybe? (may not b eimportant)
-    def __init__(self, shape,  origin=None, mask=None, rbins=800,
+    def __init__(self, shape,  origin=None, mask=None, maskb=None, rbins=800,
                  phibins=360, method='bgsub', saverphis=None, PF=True,
-                 sigma=None):
+                 sigma=None, r_map=None):
         ''' The initialization routine for the delta phi correlation object
 
             Parameters
@@ -84,16 +135,16 @@ class RDeltaPhiCorrelator:
             rbins : int or list of floats, optional
                 This specifies the bins in radius (in units of pixels)
                 There are two cases:
-                    - If it is an int, the image will be partitioned into that number
-                    of bins
+                    - If it is an int, the image will be partitioned into that
+                      number of bins
                     - If it is a list of floats, the floats will be treated as
                     the edges of the bins used for the partitioning (in pixels)
                 Defaults to 800
 
             phibins : int or list of floats, optional
                 There are two cases:
-                    - If it is an int, the image will be partitioned into that number
-                    of bins
+                    - If it is an int, the image will be partitioned into that
+                      number of bins
                     - If it is a list of floats, the floats will be treated as
                     the edges of the bins used for the partitioning (in pixels)
                 Defaults to 360
@@ -142,18 +193,27 @@ class RDeltaPhiCorrelator:
 
         # the statistics binner
         # TODO : here we'd need two rphibinstats for two masks
-        self.rphibinstat = RPhiBinnedStatistic(self.shape, (rbins, phibins),
+        # self.rphibinstat = mkrphibinstat(self.shape, bins=(rbins, phibins),
+                                          #origin=origin, statistic='mean',
+                                          #mask=mask, r_map=r_map)
+        self.rphibinstat = RPhiBinnedStatistic(self.shape,
+                                               bins=(rbins, phibins),
                                                origin=origin, statistic='mean',
-                                               mask=mask)
+                                               mask=mask, r_map=r_map)
         self.rphimask = self.rphibinstat(self.mask)
         self._removenans(self.rphimask)
 
         if maskb is not None:
-            self.rphibinstatb = RPhiBinnedStatistic(self.shape, (rbins,
-                                                                 phibins),
+            #self.rphibinstatb = mkrphibinstat(self.shape, bins=(rbins,
+                                                                 #phibins),
+                                                    #origin=origin,
+                                                    #statistic='mean',
+                                                    #mask=maskb, r_map=r_map)
+            self.rphibinstatb = RPhiBinnedStatistic(self.shape, bins=(rbins,
+                                                    phibins),
                                                     origin=origin,
                                                     statistic='mean',
-                                                    mask=maskb)
+                                                    mask=maskb, r_map=r_map)
             self.rphimaskb = self.rphibinstat(self.maskb)
             self._removenans(self.rphimaskb)
         else:
@@ -206,8 +266,13 @@ class RDeltaPhiCorrelator:
         self.phivalsd = np.degrees(self.phivals)
 
         # for computing S(q) and S2(q) during the process
+        #self.rbinstat = mkrbinstat(self.shape, rbins, origin=origin,
+                                              #statistic='mean', mask=mask,
+                                    #r_map=r_map)
         self.rbinstat = RadialBinnedStatistic(self.shape, rbins, origin=origin,
-                                              statistic='mean', mask=mask)
+                                              statistic='mean', mask=mask,
+                                              r_map=r_map)
+
 
         # the counts per r bin, no need to use 'sum' this time
         self.Ircnts = self.rbinstat.flatcount
