@@ -194,8 +194,8 @@ class RDeltaPhiCorrelator:
         # the statistics binner
         # TODO : here we'd need two rphibinstats for two masks
         # self.rphibinstat = mkrphibinstat(self.shape, bins=(rbins, phibins),
-                                          #origin=origin, statistic='mean',
-                                          #mask=mask, r_map=r_map)
+        # origin=origin, statistic='mean',
+        # mask=mask, r_map=r_map)
         self.rphibinstat = RPhiBinnedStatistic(self.shape,
                                                bins=(rbins, phibins),
                                                origin=origin, statistic='mean',
@@ -204,11 +204,11 @@ class RDeltaPhiCorrelator:
         self._removenans(self.rphimask)
 
         if maskb is not None:
-            #self.rphibinstatb = mkrphibinstat(self.shape, bins=(rbins,
-                                                                 #phibins),
-                                                    #origin=origin,
-                                                    #statistic='mean',
-                                                    #mask=maskb, r_map=r_map)
+            # self.rphibinstatb = mkrphibinstat(self.shape, bins=(rbins,
+            # phibins),
+            # origin=origin,
+            # statistic='mean',
+            # mask=maskb, r_map=r_map)
             self.rphibinstatb = RPhiBinnedStatistic(self.shape, bins=(rbins,
                                                     phibins),
                                                     origin=origin,
@@ -266,13 +266,12 @@ class RDeltaPhiCorrelator:
         self.phivalsd = np.degrees(self.phivals)
 
         # for computing S(q) and S2(q) during the process
-        #self.rbinstat = mkrbinstat(self.shape, rbins, origin=origin,
-                                              #statistic='mean', mask=mask,
-                                    #r_map=r_map)
+        # self.rbinstat = mkrbinstat(self.shape, rbins, origin=origin,
+        # statistic='mean', mask=mask,
+        # r_map=r_map)
         self.rbinstat = RadialBinnedStatistic(self.shape, rbins, origin=origin,
                                               statistic='mean', mask=mask,
                                               r_map=r_map)
-
 
         # the counts per r bin, no need to use 'sum' this time
         self.Ircnts = self.rbinstat.flatcount
@@ -440,7 +439,7 @@ class RDeltaPhiCorrelator:
         '''
         # saving rphis is necessary if the method is bgest
         if 'bgest' in self.method and self.saverphis is False:
-            raise ValueError("Error, rphis not set to True. Can't use "+\
+            raise ValueError("Error, rphis not set to True. Can't use " +
                              "method bgest")
 
         # convention:
@@ -569,7 +568,6 @@ class RDeltaPhiCorrelator:
                 if compute_imgb:
                     self.rphisb[i] = rphib
                     self.rphis2b[i] = rphi2b
-
 
             rdeltaphi = self.deltaphicorrelate(rphi, rphib=rphib,
                                                rphimask=self.rphimask,
